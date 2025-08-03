@@ -94,4 +94,5 @@ W = model.get_W(apply_scaling=True)
 
 ## 📄 License
 
-MIT License
+GPL-3.0
+
