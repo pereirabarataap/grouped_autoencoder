@@ -1,6 +1,6 @@
 # Grouped Autoencoder
 
-A PyTorch-based autoencoder that supports grouped feature constraints and regularization.
+A PyTorch-based 2D autoencoder that supports grouped feature constraints and regularization.
 
 ## Features
 
@@ -13,3 +13,4 @@ A PyTorch-based autoencoder that supports grouped feature constraints and regula
 
 ```bash
 pip install -r requirements.txt
+
