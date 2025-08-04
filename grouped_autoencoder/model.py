@@ -1,14 +1,19 @@
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class Encoder(nn.Module):
     def __init__(self, in_features, out_features, feature_classes=None, non_negative=True):
         super().__init__()
-        self.W_raw = nn.Parameter(torch.randn(in_features, out_features))
+
+        if non_negative:
+            self.W_raw = nn.Parameter(torch.rand(in_features, out_features))
+        else:
+            self.W_raw = nn.Parameter(torch.randn(in_features, out_features))
+            
         self.non_negative = non_negative
         
         if feature_classes is not None:
@@ -71,7 +76,6 @@ class Encoder(nn.Module):
         W = self.get_W(theta)
         return X @ W
 
-
 class Decoder(nn.Module):
     def __init__(self, encoder):
         super().__init__()
@@ -80,7 +84,6 @@ class Decoder(nn.Module):
     def forward(self, Z, theta=1.0):
         W = self.encoder.get_W(theta)
         return Z @ W.T
-
 
 class GroupedAutoencoder(BaseEstimator, TransformerMixin):
     
@@ -139,7 +142,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self._build_model(X_tensor.shape[1])
 
         # Prevents full disregard of reconstruction loss when theta == 1
-        loss_theta = (1-1e-6) if self.theta == 1 else self.theta
+        loss_theta = (1 - 1e-6) if self.theta == 1 else self.theta
         best_val = float('inf')
         epochs_no_improve = 0
         
