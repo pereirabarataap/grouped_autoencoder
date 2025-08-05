@@ -56,7 +56,7 @@ Z = model.transform(X)
 X_recon = model.inverse_transform(Z)
 
 # Encoder weight matrix
-W = model.get_W(apply_scaling=True)
+W = model.get_W()
 ```
 
 ## 📊 Parameters
@@ -83,7 +83,6 @@ W = model.get_W(apply_scaling=True)
 ## 📈 Tips
 
 - Use `model.to('cuda')` to leverage GPU training.
-- Call `get_W(apply_scaling=True)` to get a normalized loading matrix (e.g. for visualization).
 - Use high `theta` if your feature classes are trustworthy.
 
 ## 🛠 Dependencies
@@ -95,4 +94,5 @@ W = model.get_W(apply_scaling=True)
 ## 📄 License
 
 GPL-3.0
+
 
