@@ -1,3 +1,10 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
 class Encoder(nn.Module):
     def __init__(self, in_features, out_features, feature_classes=None, non_negative=True):
         super().__init__()
@@ -95,6 +102,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         verbose=False,
         random_state=42,
         scheduler_patience=100,
+        l1_ratio=0.5,
         theta=1.0
     ):
         self.n_components = n_components
@@ -105,10 +113,12 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self.device = device
         self.feature_classes = feature_classes
         self.non_negative = non_negative
-        self.verbose = verbose
+        self.verbose = int(verbose)
         self.random_state = random_state
         self.scheduler_patience = scheduler_patience
+        self.l1_ratio = np.clip(l1_ratio, 0,1)
         self.theta = np.clip(theta, 0, 1)
+        
 
     def _build_model(self, input_dim):
         torch.manual_seed(self.random_state)
@@ -138,6 +148,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
 
         # Prevents full disregard of reconstruction loss when theta == 1
         loss_theta = (1 - 1e-6) if self.theta == 1 else self.theta
+        entropy_scaling = 1 / np.exp(self.n_components)
         best_val = float('inf')
         epochs_no_improve = 0
         
@@ -153,11 +164,32 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             # Regularization
             reg_struct = 0.0
             reg_entropy = 0.0
-            W = self.encoder.activation(self.encoder.W_raw) if self.non_negative else self.encoder.W_raw
-
+            W = self.encoder.activation(self.encoder.W_raw)
             if self.encoder.mask_zero_entries is not None:
-                reg_struct = torch.sqrt(torch.mean(W[self.encoder.mask_zero_entries] ** 2))
-
+                # columns vector W-balanced L2 regularisation
+                mask = self.encoder.mask_zero_entries
+                col_sums_l1 = (W.abs() * mask).sum(dim=0)
+                col_sums_l2 = (W**2 * mask).sum(dim=0)
+                col_counts = mask.sum(dim=0)
+                # Mean per column (safe divide)
+                col_means_l1 = col_sums_l1 / col_counts.clamp(min=1)
+                col_means_l2 = col_sums_l2 / col_counts.clamp(min=1)
+                # Only average over columns with at least one masked entry
+                active_cols = col_counts > 0
+                if active_cols.any():
+                    reg_struct_l1 = col_means_l1[active_cols].mean()
+                    reg_struct_l2 = torch.sqrt(col_means_l2[active_cols].mean())
+                    reg_struct = self.l1_ratio * reg_struct_l1 + (1 - self.l1_ratio) * reg_struct_l2
+                
+                # loop-implementation of above
+                # for m in range(W.shape[1]):
+                #     reg_struct += torch.mean(torch.abs(W[:,m][self.encoder.mask_zero_entries[:,m]]))
+                # reg_struct /= W.shape[1]
+                
+                # reg_struct = torch.mean(torch.abs(W[self.encoder.mask_zero_entries]), ax) # equivalent to L1 reg
+                
+                # reg_struct = torch.sqrt(torch.mean(W[self.encoder.mask_zero_entries] ** 2))  equivalent to root L2-reg
+                
             if self.encoder.nan_mask is None or self.encoder.nan_mask.any():
                 if self.encoder.nan_mask is not None:
                     W_nan = W[self.encoder.nan_mask]
@@ -165,8 +197,8 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
                     W_nan = W
 
                 if W_nan.numel() > 0:
-                    probs = F.normalize(W_nan.abs() + 1e-8, p=1, dim=1)
-                    reg_entropy = torch.mean(torch.distributions.Categorical(probs=probs).entropy()) / np.exp(self.n_components)
+                    probs = F.normalize(W_nan.abs().clamp_min(1e-8), p=1, dim=1)
+                    reg_entropy = torch.mean(torch.distributions.Categorical(probs=probs).entropy()) * entropy_scaling
 
             reg_total = reg_struct + reg_entropy
             # ensuring there is still some small rmse reduction
@@ -183,10 +215,11 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
                     val_rmse = torch.sqrt(self.loss_fn(X_val_hat, X_val_tensor))
                     val_loss = (1 - loss_theta) * val_rmse + loss_theta * reg_total
 
-            if self.verbose and epoch % 100 == 0:
+            if self.verbose and (epoch % self.verbose == 0) and (epoch!=0):
                 lr = self.optimizer.param_groups[0]['lr']
                 print(
-                    f"Epoch {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}",
+                    f"Epoch {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
+                    f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}",
                     end="\r", flush=True
                 )
 
@@ -200,16 +233,26 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
                 if self.verbose:
                     lr = self.optimizer.param_groups[0]['lr']
                     print(
-                        f"\nEStop {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}"
+                        f"EStop {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | 
+                        f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}\n",
+                        end="\r", flush=True
                     )
                 break
 
+            if epoch==(self.max_iter-1) and self.verbose:
+                lr = self.optimizer.param_groups[0]['lr']
+                print(
+                    f"NoCnv {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | 
+                    f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}\n",
+                    end="\r", flush=True
+                )
+        
             loss.backward()
             self.optimizer.step()
             self.scheduler.step(val_loss)
-            
+        
         return self
-
+            
     def transform(self, X):
         X_tensor = torch.tensor(X, dtype=torch.float32, device=self.device)
         self.model.eval()
