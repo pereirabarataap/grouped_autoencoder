@@ -1,19 +1,14 @@
-import torch
-import numpy as np
-import torch.nn as nn
-import torch.nn.functional as F
-from sklearn.base import BaseEstimator, TransformerMixin
-
-
 class Encoder(nn.Module):
     def __init__(self, in_features, out_features, feature_classes=None, non_negative=True):
         super().__init__()
 
         if non_negative:
             self.W_raw = nn.Parameter(torch.rand(in_features, out_features))
+            self.activation = F.softplus
         else:
             self.W_raw = nn.Parameter(torch.randn(in_features, out_features))
-            
+            self.activation = nn.Identity()
+
         self.non_negative = non_negative
         
         if feature_classes is not None:
@@ -62,7 +57,7 @@ class Encoder(nn.Module):
             self.register_buffer("nan_mask", None)
 
     def get_W(self, theta=1.0):
-        W_source = torch.sigmoid(self.W_raw) if self.non_negative else self.W_raw
+        W_source = self.activation(self.W_raw) if self.non_negative else self.W_raw
 
         if self.mask_zero_entries is None or theta < 1.0:
             return W_source
@@ -158,7 +153,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             # Regularization
             reg_struct = 0.0
             reg_entropy = 0.0
-            W = torch.sigmoid(self.encoder.W_raw) if self.non_negative else self.encoder.W_raw
+            W = self.encoder.activation(self.encoder.W_raw) if self.non_negative else self.encoder.W_raw
 
             if self.encoder.mask_zero_entries is not None:
                 reg_struct = torch.sqrt(torch.mean(W[self.encoder.mask_zero_entries] ** 2))
@@ -177,9 +172,6 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             # ensuring there is still some small rmse reduction
             loss = (1 - loss_theta) * rmse + loss_theta * reg_total
 
-            loss.backward()
-            self.optimizer.step()
-
             # Validation
             val_rmse = rmse
             val_loss = loss
@@ -190,8 +182,6 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
                     X_val_hat = self.decoder(Z_val, theta=self.theta)
                     val_rmse = torch.sqrt(self.loss_fn(X_val_hat, X_val_tensor))
                     val_loss = (1 - loss_theta) * val_rmse + loss_theta * reg_total
-
-            self.scheduler.step(val_loss)
 
             if self.verbose and epoch % 100 == 0:
                 lr = self.optimizer.param_groups[0]['lr']
@@ -210,10 +200,14 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
                 if self.verbose:
                     lr = self.optimizer.param_groups[0]['lr']
                     print(
-                        f"\nEarly stopping at epoch {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}"
+                        f"\nEStop {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}"
                     )
                 break
 
+            loss.backward()
+            self.optimizer.step()
+            self.scheduler.step(val_loss)
+            
         return self
 
     def transform(self, X):
