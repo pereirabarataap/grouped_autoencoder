@@ -10,7 +10,7 @@ class Encoder(nn.Module):
 
         if non_negative:
             self.W_raw = nn.Parameter(torch.rand(in_features, out_features))
-            self.activation = F.softplus
+            self.activation = F.sigmoid
         else:
             self.W_raw = nn.Parameter(torch.randn(in_features, out_features))
             self.activation = nn.Identity()
@@ -62,19 +62,8 @@ class Encoder(nn.Module):
             self.register_buffer("mask_zero_entries", None)
             self.register_buffer("nan_mask", None)
 
-    def get_W(self, theta=1.0):
-        W_source = self.activation(self.W_raw) if self.non_negative else self.W_raw
-
-        if self.mask_zero_entries is None or theta < 1.0:
-            return W_source
-
-        W = torch.zeros_like(self.W_raw)
-        for c in range(self.W_raw.shape[1]):
-            W[self.feature_classes_full == c, c] = W_source[self.feature_classes_full == c, c]
-        return W
-
     def forward(self, X, theta=1.0):
-        W = self.get_W(theta)
+        W = self.activation(self.W_raw)
         return X @ W
 
 class Decoder(nn.Module):
@@ -83,7 +72,7 @@ class Decoder(nn.Module):
         self.encoder = encoder
 
     def forward(self, Z, theta=1.0):
-        W = self.encoder.get_W(theta)
+        W = self.encoder.activation(self.encoder.W_raw)
         return Z @ W.T
 
 class GroupedAutoencoder(BaseEstimator, TransformerMixin):
@@ -146,11 +135,10 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self._build_model(X_tensor.shape[1])
 
         # Prevents full disregard of reconstruction loss when theta == 1
-        loss_theta = (1 - 1e-6) if self.theta == 1 else self.theta
+        loss_theta = (1 - 1e-4) if self.theta == 1 else self.theta
         entropy_scaling = 1 / np.exp(self.n_components)
         best_val = float('inf')
         epochs_no_improve = 0
-        
         for epoch in range(self.max_iter):
             self.model.train()
             self.optimizer.zero_grad()
@@ -160,47 +148,38 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             rmse = torch.sqrt(self.loss_fn(X_hat, X_tensor))
             loss = rmse
 
-            # Regularization
-            reg_struct = 0.0
-            reg_entropy = 0.0
             W = self.encoder.activation(self.encoder.W_raw)
+            
+            # Regularization
+            reg_struct = torch.Tensor([0.0])
+            reg_entropy = torch.Tensor([0.0])
+        
+            # Zeros Regularization
             if self.encoder.mask_zero_entries is not None:
                 # columns vector W-balanced L2 regularisation
                 mask = self.encoder.mask_zero_entries
                 col_sums_l1 = (W.abs() * mask).sum(dim=0)
                 col_sums_l2 = (W**2 * mask).sum(dim=0)
                 col_counts = mask.sum(dim=0)
-                # Mean per column (safe divide)
                 col_means_l1 = col_sums_l1 / col_counts.clamp(min=1)
                 col_means_l2 = col_sums_l2 / col_counts.clamp(min=1)
-                # Only average over columns with at least one masked entry
                 active_cols = col_counts > 0
                 if active_cols.any():
                     reg_struct_l1 = col_means_l1[active_cols].mean()
                     reg_struct_l2 = torch.sqrt(col_means_l2[active_cols].mean())
                     reg_struct = self.l1_ratio * reg_struct_l1 + (1 - self.l1_ratio) * reg_struct_l2
-                
-                # loop-implementation of above
-                # for m in range(W.shape[1]):
-                #     reg_struct += torch.mean(torch.abs(W[:,m][self.encoder.mask_zero_entries[:,m]]))
-                # reg_struct /= W.shape[1]
-                
-                # reg_struct = torch.mean(torch.abs(W[self.encoder.mask_zero_entries]), ax) # equivalent to L1 reg
-                
-                # reg_struct = torch.sqrt(torch.mean(W[self.encoder.mask_zero_entries] ** 2))  equivalent to root L2-reg
-                
+
+            # Entropy Regularization
             if self.encoder.nan_mask is None or self.encoder.nan_mask.any():
                 if self.encoder.nan_mask is not None:
                     W_nan = W[self.encoder.nan_mask]
                 else:
                     W_nan = W
-
                 if W_nan.numel() > 0:
                     probs = F.normalize(W_nan.abs().clamp_min(1e-8), p=1, dim=1)
                     reg_entropy = torch.mean(torch.distributions.Categorical(probs=probs).entropy()) * entropy_scaling
-
+            
             reg_total = reg_struct + reg_entropy
-            # ensuring there is still some small rmse reduction
             loss = (1 - loss_theta) * rmse + loss_theta * reg_total
 
             # Validation
@@ -217,8 +196,10 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             if self.verbose and (epoch % self.verbose == 0) and (epoch!=0):
                 lr = self.optimizer.param_groups[0]['lr']
                 print(
-                    f"Epoch {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
-                    f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}",
+                    f"Epoch {epoch:5d} | "
+                    f"Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
+                    f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | "
+                    f"Zero Reg: {reg_struct.item():.5f} | Entropy Reg: {reg_entropy.item():.5f} | LR: {lr:.6f}",
                     end="\r", flush=True
                 )
 
@@ -232,18 +213,22 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
                 if self.verbose:
                     lr = self.optimizer.param_groups[0]['lr']
                     print(
-                        f"EStop {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
-                        f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}\n",
-                        end="\r", flush=True
+                        f"EStop {epoch:5d} | "
+                        f"Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
+                        f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | "
+                        f"Zero Reg: {reg_struct.item():.5f} | Entropy Reg: {reg_entropy.item():.5f} | LR: {lr:.6f}",
+                        f"\n", end="\r", flush=True
                     )
                 break
 
             if epoch==(self.max_iter-1) and self.verbose:
                 lr = self.optimizer.param_groups[0]['lr']
                 print(
-                    f"NoCnv {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
-                    f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}\n",
-                    end="\r", flush=True
+                    f"NoCnv {epoch:5d} | "
+                    f"Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
+                    f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | "
+                    f"Zero Reg: {reg_struct.item():.5f} | Entropy Reg: {reg_entropy.item():.5f} | LR: {lr:.6f}",
+                    f"\n", end="\r", flush=True
                 )
         
             loss.backward()
@@ -271,7 +256,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         return self.inverse_transform(Z)
 
     def get_W(self, apply_scaling=False):
-        W_tensor = self.encoder.get_W(theta=self.theta)
+        W_tensor = self.encoder.activation(self.encoder.W_raw)
         if apply_scaling:
             W_tensor = F.normalize(W_tensor, p=1, dim=0)
         return W_tensor.detach().cpu().numpy()
