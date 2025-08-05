@@ -10,7 +10,7 @@ class Encoder(nn.Module):
 
         if non_negative:
             self.W_raw = nn.Parameter(torch.rand(in_features, out_features))
-            self.activation = F.sigmoid
+            self.activation = F.softplus
         else:
             self.W_raw = nn.Parameter(torch.randn(in_features, out_features))
             self.activation = nn.Identity()
@@ -266,3 +266,4 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         if hasattr(self, "model"):
             self.model.to(device)
         return self
+
