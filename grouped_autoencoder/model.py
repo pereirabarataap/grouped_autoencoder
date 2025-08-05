@@ -1,9 +1,8 @@
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
-
 
 class Encoder(nn.Module):
     def __init__(self, in_features, out_features, feature_classes=None, non_negative=True):
@@ -233,7 +232,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
                 if self.verbose:
                     lr = self.optimizer.param_groups[0]['lr']
                     print(
-                        f"EStop {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | 
+                        f"EStop {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
                         f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}\n",
                         end="\r", flush=True
                     )
@@ -242,7 +241,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             if epoch==(self.max_iter-1) and self.verbose:
                 lr = self.optimizer.param_groups[0]['lr']
                 print(
-                    f"NoCnv {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | 
+                    f"NoCnv {epoch:5d} | Train Loss: {loss.item():.5f} | Train Error: {rmse.item():.5f} | "
                     f"Val Loss: {val_loss.item():.5f} | Val Error: {val_rmse.item():.5f} | LR: {lr:.6f}\n",
                     end="\r", flush=True
                 )
