@@ -221,14 +221,17 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         # Assign config
         self.device = device
         self.w_init = w_init
+        
         self.verbose = int(verbose)
         self.activation = activation
         self.max_iter = int(max_iter)
         self.min_delta = float(min_delta)
+        
         self.n_components = int(n_components)
         self.random_state = int(random_state)
         self.non_negative = bool(non_negative)
         self.entropy_scaling = entropy_scaling
+        self.feature_classes = feature_classes
         self.epsilon = np.clip(epsilon, 0.0, 1.0)
         self.learning_rate = float(learning_rate)
         self.l1_ratio = np.clip(l1_ratio, 0.0, 1.0)
@@ -237,8 +240,8 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self.entropy_on_classes = bool(entropy_on_classes)
         self.scheduler_factor = np.clip(scheduler_factor, 0.0, 1.0)
         self.early_stopping_patience = int(early_stopping_patience)
-        self.feature_classes = np.array(feature_classes) if feature_classes is not None else None
-
+        
+        
     def _build_model(self, input_dim):
         """
         Internal: Initializes encoder, decoder, and optimizer.
@@ -250,7 +253,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             activation=self.activation,
             out_features=self.n_components,
             non_negative=self.non_negative,
-            feature_classes=self.feature_classes,
+            feature_classes=self.feature_classes_,
         )
         self.decoder = Decoder(self.encoder)
         self.model = nn.Sequential(self.encoder, self.decoder).to(self.device)
@@ -277,6 +280,19 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         # Training setup
         X_tensor = torch.tensor(X, dtype=torch.float32, device=self.device)
         X_val_tensor = torch.tensor(X_val, dtype=torch.float32, device=self.device) if X_val is not None else None
+        n_features = X_tensor.shape[1]
+    
+        # Interpret special feature_classes shorthand
+        if isinstance(self.feature_classes, (int, float)) and self.feature_classes == -1:
+            self.feature_classes_ = np.full((n_features,), -1, dtype=np.float32)
+        elif isinstance(self.feature_classes, (str, float)) and str(self.feature_classes).lower() == "nan":
+            self.feature_classes_ = None
+        elif self.feature_classes is not None:
+            self.feature_classes_ = np.array(self.feature_classes, dtype=np.float32)
+        else:
+            self.feature_classes_ = None
+
+        # Build model using parsed feature_classes
         self._build_model(X_tensor.shape[1])
 
         # Scaling factor for entropy
