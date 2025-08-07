@@ -45,10 +45,14 @@ pip install torch numpy scikit-learn
 
 ```python
 from grouped_autoencoder import GroupedAutoencoder
+from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 
 # Sample input (n_samples x n_features)
 X = np.random.rand(100, 10)
+
+# Preprocessing: scale to [0, 1]
+X_scaled = MinMaxScaler().fit_transform(X)
 
 # Grouping constraints
 feature_classes = np.array([0, 0, 1, 1, -1, 2, 2, np.nan, 0, 1])
@@ -63,9 +67,9 @@ model = GroupedAutoencoder(
     verbose=100,
 )
 
-model.fit(X)
-Z = model.transform(X)
-X_recon = model.predict(X)
+model.fit(X_scaled)
+Z = model.transform(X_scaled)
+X_recon = model.predict(X_scaled)
 W = model.get_W(apply_scaling=True)
 ```
 
@@ -184,6 +188,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
