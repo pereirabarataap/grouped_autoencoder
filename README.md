@@ -76,12 +76,9 @@ X_scaled = MinMaxScaler().fit_transform(X)
 feature_classes = np.array([0, 0, 1, 1, -1, 2, 2, np.nan, 0, 1])
 
 model = GroupedAutoencoder(
+    theta=0.95,
     n_components=3,
     feature_classes=feature_classes,
-    theta=0.95,
-    entropy_on_classes=True,
-    activation="softplus",
-    non_negative=True,
     verbose=100,
 )
 
@@ -178,6 +175,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
