@@ -182,5 +182,6 @@ grouped_autoencoder/
 
 ## 📄 License
 
-GLP-3.0
+GPL-3.0
+
 
