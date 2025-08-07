@@ -4,7 +4,7 @@ A **PyTorch-based linear autoencoder** framework designed for **interpretable di
 
 ---
 
-## 🔬 Scientific Motivation
+## 🧩 Scientific Motivation
 
 Conventional autoencoders are optimized for reconstruction fidelity without regard to **interpretability** or **feature structure**. The Grouped Autoencoder (GAE) augments this by imposing **structured priors** over the encoder weights:
 
@@ -73,24 +73,25 @@ W = model.get_W(apply_scaling=True)
 
 ## ⚙️ Parameters
 
-| Parameter               | Description |
-|-------------------------|-------------|
-| `n_components`          | Size of latent space. |
-| `feature_classes`       | Array (n_features,) indicating group constraints:<br>• `>= 0`: apply zero + entropy reg for that component<br>• `-1`: entropy-only<br>• `np.nan`: no regularization |
-| `theta` (default=0.5)   | Balance between MSE and regularization. |
-| `epsilon` (default=0.5) | Tradeoff between zero vs. entropy reg. |
-| `l1_ratio` (default=0.5)| L1 vs. L2 mix in zero reg. |
-| `activation`            | Used for non-negative weights: `'sigmoid'` or `'softplus'`. |
-| `non_negative`          | Enforces non-negativity on encoder weights. |
-| `entropy_on_classes`    | If True, computes average entropy per class. |
-| `entropy_scaling`       | One of `'log'`, `'exp'`, or `None`. |
-| `learning_rate`         | Initial LR for Adam optimizer. |
-| `early_stopping_patience` | Stop if no improvement for N epochs. |
-| `scheduler_patience`    | LR decay trigger window. |
-| `scheduler_factor`      | LR decay factor. |
-| `verbose`               | If int > 0, logs every N epochs. |
-| `random_state`          | Reproducibility seed. |
-| `device`                | `'cpu'` or `'cuda'`. |
+| Parameter                | Type          | Default       | Description |
+|--------------------------|---------------|----------------|-------------|
+| `n_components`           | `int`         | `2`            | Number of latent dimensions in the embedding space. |
+| `feature_classes`        | `array-like`  | `None`         | Vector of length `n_features` specifying group structure:<br>• `>= 0`: known group index (used for both zero & entropy regularization)<br>• `-1`: entropy regularization only<br>• `np.nan`: no regularization applied |
+| `theta`                  | `float`       | `1.0`          | Controls the trade-off between reconstruction loss (RMSE) and regularization loss. `0.0` = pure autoencoder, `1.0` = pure structure. |
+| `epsilon`                | `float`       | `0.5`          | Balances between zero (`1 - ε`) and entropy (`ε`) regularization. |
+| `l1_ratio`               | `float`       | `0.5`          | Determines the mix of L1 and L2 norm penalties in zero regularization. `1.0` = L1 only, `0.0` = L2 only. |
+| `non_negative`           | `bool`        | `True`         | If `True`, encoder weights are constrained to be ≥ 0 via an activation function. |
+| `activation`             | `str`         | `'softplus'`   | Activation used for non-negative weight constraint. Options: `'softplus'`, `'sigmoid'`. Ignored if `non_negative=False`. |
+| `entropy_on_classes`     | `bool`        | `False`        | If `True`, entropy regularization is grouped and averaged by class label (i.e. per-group entropy minimization). |
+| `entropy_scaling`        | `str or None` | `'exp'`        | How entropy regularization is scaled. Options: `'log'`, `'exp'`, or `None` (no scaling). |
+| `learning_rate`          | `float`       | `0.1`          | Initial learning rate used by the Adam optimizer. |
+| `early_stopping_patience`| `int`         | `100`          | Number of epochs without improvement before early stopping is triggered. |
+| `scheduler_patience`     | `int`         | `10`           | Number of stagnant epochs before reducing the learning rate. |
+| `scheduler_factor`       | `float`       | `0.5`          | Factor by which the learning rate is reduced after plateau. |
+| `verbose`                | `int or bool` | `False`        | If an integer > 0, logs training metrics every N epochs. Set to `False` or `0` for silent mode. |
+| `random_state`           | `int`         | `42`           | Random seed for reproducibility of weight initialization. |
+| `device`                 | `str`         | `'cpu'`        | Device used for training. Options: `'cpu'` or `'cuda'`. |
+
 
 ---
 
@@ -164,7 +165,7 @@ The Grouped Autoencoder is designed for tasks requiring **interpretable represen
 
 ### 🧠 Exploratory Research
 
-If no clear structure is known, using `feature_classes = -1` or `np.nan` allows the model to **learn sparse representations** in an unsupervised way—ideal for exploratory latent factor analysis or pretraining for downstream models.
+If no clear structure is known, using `feature_classes = -1` allows the model to **learn sparse representations** in an unsupervised way—ideal for exploratory latent factor analysis or pretraining for downstream models.
 
 ---
 
@@ -183,5 +184,6 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
