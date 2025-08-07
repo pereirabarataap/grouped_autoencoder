@@ -13,11 +13,29 @@ Conventional autoencoders are optimized for reconstruction fidelity without rega
 - **Zero suppression** penalizes off-component loadings to enforce group-exclusive mappings.
 - Optionally constrains weights to be **non-negative**, promoting parts-based learning à la NMF.
 
-This makes GAE suitable for applications in:
-- Genomics (pathway-constrained embeddings)
-- NLP (topic-aligned latent factors)
-- Recommender systems (user-group decomposition)
-- Explainable ML
+---
+
+## 🎯 Applications
+
+The Grouped Autoencoder is designed for tasks requiring **interpretable representations** that reflect known or hypothesized structure in the data. Applications span across scientific and non-scientific domains.
+
+### 🔬 STEM Applications
+
+- **Genomics & Bioinformatics**: Map genes to known pathways or functional clusters by assigning feature_classes based on known gene ontology.
+- **Neuroscience**: Decompose brain signals (EEG, fMRI) with anatomical or functional priors, enabling structured latent representations.
+- **Healthcare Informatics**: Project patient feature data (e.g., symptoms, labs) into disease-oriented embeddings.
+- **Recommender Systems**: Encourage items (features) to associate with a subset of user-interest categories.
+
+### 💬 Non-STEM / Social Science Applications
+
+- **Survey Analysis & Psychometrics**: When dealing with high-dimensional survey responses (e.g., personality tests, social attitudes), setting `feature_classes = -1` allows the model to discover sparse and interpretable latent dimensions (e.g., behavioral archetypes) via entropy-based regularization.
+- **Sociology / Education**: Interpret latent traits in structured assessments by aligning questionnaire items with hypothesized constructs.
+- **Marketing**: Discover underlying customer segments by analyzing question-level feedback data (e.g., product surveys).
+- **Political Science**: Identify ideological dimensions from question-level voting or polling data, even without clear prior groupings.
+
+### 🧠 Exploratory Research
+
+If no clear structure is known, using `feature_classes = -1` allows the model to **learn sparse representations** in an unsupervised way—ideal for exploratory latent factor analysis or pretraining for downstream models.
 
 ---
 
@@ -96,7 +114,6 @@ W = model.get_W(apply_scaling=True)
 | random_state           | int         | 42           | Random seed for reproducibility of weight initialization. |
 | device                 | str         | 'cpu'        | Device used for training. Options: 'cpu' or 'cuda'. |
 
-
 ---
 
 ## 🧠 Regularization Details
@@ -146,33 +163,6 @@ Perfect for interpretability and plotting (e.g., heatmaps).
 - If feature grouping is noisy, use a lower `epsilon` to emphasize zero reg.
 - Use `model.to('cuda')` **before** calling `.fit(X)` for GPU acceleration.
 
-
----
-
-## 🎯 Applications
-
-The Grouped Autoencoder is designed for tasks requiring **interpretable representations** that reflect known or hypothesized structure in the data. Applications span across scientific and non-scientific domains.
-
-### 🔬 STEM Applications
-
-- **Genomics & Bioinformatics**: Map genes to known pathways or functional clusters by assigning feature_classes based on known gene ontology.
-- **Neuroscience**: Decompose brain signals (EEG, fMRI) with anatomical or functional priors, enabling structured latent representations.
-- **Healthcare Informatics**: Project patient feature data (e.g., symptoms, labs) into disease-oriented embeddings.
-- **Recommender Systems**: Encourage items (features) to associate with a subset of user-interest categories.
-
-### 💬 Non-STEM / Social Science Applications
-
-- **Survey Analysis & Psychometrics**: When dealing with high-dimensional survey responses (e.g., personality tests, social attitudes), setting `feature_classes = -1` allows the model to discover sparse and interpretable latent dimensions (e.g., behavioral archetypes) via entropy-based regularization.
-- **Sociology / Education**: Interpret latent traits in structured assessments by aligning questionnaire items with hypothesized constructs.
-- **Marketing**: Discover underlying customer segments by analyzing question-level feedback data (e.g., product surveys).
-- **Political Science**: Identify ideological dimensions from question-level voting or polling data, even without clear prior groupings.
-
-### 🧠 Exploratory Research
-
-If no clear structure is known, using `feature_classes = -1` allows the model to **learn sparse representations** in an unsupervised way—ideal for exploratory latent factor analysis or pretraining for downstream models.
-
----
-
 ---
 
 ## 📁 File Structure
@@ -188,6 +178,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
