@@ -80,7 +80,10 @@ W = model.get_W(apply_scaling=True)
 | Parameter                | Type          | Default       | Description |
 |--------------------------|---------------|----------------|-------------|
 | `n_components`           | `int`         | `2`            | Number of latent dimensions in the embedding space. |
-| `feature_classes`        | `array-like`  | `None`         | Vector of length `n_features` specifying group structure:<br>• `>= 0`: known group index (used for both zero & entropy regularization)<br>• `-1`: entropy regularization only<br>• `np.nan`: no regularization applied |
+"| `feature_classes`        | `array-like`  | `None`         | Vector of length `n_features` specifying group structure:<br>"
+    "• `>= 0`: known group index (used for both zero & entropy regularization)<br>"
+    "• `-1`: entropy regularization only (setting the entire array to -1 induces unsupervised sparse factor discovery)<br>"
+    "• `np.nan`: no regularization applied |"
 | `theta`                  | `float`       | `1.0`          | Controls the trade-off between reconstruction loss (RMSE) and regularization loss. `0.0` = pure autoencoder, `1.0` = pure structure. |
 | `epsilon`                | `float`       | `0.5`          | Balances between zero (`1 - ε`) and entropy (`ε`) regularization. |
 | `l1_ratio`               | `float`       | `0.5`          | Determines the mix of L1 and L2 norm penalties in zero regularization. `1.0` = L1 only, `0.0` = L2 only. |
@@ -188,6 +191,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
