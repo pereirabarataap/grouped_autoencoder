@@ -54,7 +54,7 @@ If no clear structure is known, using `feature_classes = -1` allows the model to
 ## 📦 Installation
 
 ```bash
-pip install torch numpy scikit-learn
+pip install -r requirements.txt
 ```
 
 ---
@@ -178,6 +178,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
