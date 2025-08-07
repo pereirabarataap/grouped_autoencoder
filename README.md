@@ -6,7 +6,7 @@ A **PyTorch-based linear autoencoder** framework designed for **interpretable di
 
 ## 🧩 Motivation
 
-Conventional autoencoders are optimized for reconstruction fidelity without regard to **interpretability** or **feature structure**. The Grouped Autoencoder (GAE) augments this by imposing **structured priors** over the encoder weights:
+Conventional autoencoders are optimized for reconstruction fidelity without regard to **interpretability** or **feature structure**. The Grouped Autoencoder augments this by imposing **structured priors** over the encoder weights:
 
 - Features can be **assigned to latent components**, mimicking group-wise loadings found in biological, economic, or social data.
 - **Entropy minimization** encourages **sparse**, **localized** representations (low-overlap features).
@@ -169,7 +169,7 @@ Perfect for interpretability and plotting (e.g., heatmaps).
 
 ```
 grouped_autoencoder/
-├── grouped_autoencoder.py      # Main model class (Encoder, Decoder, GAE)
+├── grouped_autoencoder.py      # Main model class (Encoder, Decoder, GroupedAutoencoder)
 └── README.md                   # You're here.
 ```
 
@@ -178,6 +178,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
