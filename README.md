@@ -4,7 +4,7 @@ A **PyTorch-based linear autoencoder** framework designed for **interpretable di
 
 ---
 
-## 🧩 Scientific Motivation
+## 🧩 Motivation
 
 Conventional autoencoders are optimized for reconstruction fidelity without regard to **interpretability** or **feature structure**. The Grouped Autoencoder (GAE) augments this by imposing **structured priors** over the encoder weights:
 
@@ -184,6 +184,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
