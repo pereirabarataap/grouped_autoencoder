@@ -77,7 +77,7 @@ W = model.get_W(apply_scaling=True)
 |-------------------------|-------------|
 | `n_components`          | Size of latent space. |
 | `feature_classes`       | Array (n_features,) indicating group constraints:<br>• `>= 0`: apply zero + entropy reg for that component<br>• `-1`: entropy-only<br>• `np.nan`: no regularization |
-| `theta` (default=1.0)   | Balance between MSE and regularization. |
+| `theta` (default=0.5)   | Balance between MSE and regularization. |
 | `epsilon` (default=0.5) | Tradeoff between zero vs. entropy reg. |
 | `l1_ratio` (default=0.5)| L1 vs. L2 mix in zero reg. |
 | `activation`            | Used for non-negative weights: `'sigmoid'` or `'softplus'`. |
@@ -183,3 +183,4 @@ grouped_autoencoder/
 ## 📄 License
 
 GLP-3.0
+
