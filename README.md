@@ -79,25 +79,22 @@ W = model.get_W(apply_scaling=True)
 
 | Parameter                | Type          | Default       | Description |
 |--------------------------|---------------|----------------|-------------|
-| `n_components`           | `int`         | `2`            | Number of latent dimensions in the embedding space. |
-"| `feature_classes`        | `array-like`  | `None`         | Vector of length `n_features` specifying group structure:<br>"
-    "• `>= 0`: known group index (used for both zero & entropy regularization)<br>"
-    "• `-1`: entropy regularization only (setting the entire array to -1 induces unsupervised sparse factor discovery)<br>"
-    "• `np.nan`: no regularization applied |"
-| `theta`                  | `float`       | `1.0`          | Controls the trade-off between reconstruction loss (RMSE) and regularization loss. `0.0` = pure autoencoder, `1.0` = pure structure. |
-| `epsilon`                | `float`       | `0.5`          | Balances between zero (`1 - ε`) and entropy (`ε`) regularization. |
-| `l1_ratio`               | `float`       | `0.5`          | Determines the mix of L1 and L2 norm penalties in zero regularization. `1.0` = L1 only, `0.0` = L2 only. |
-| `non_negative`           | `bool`        | `True`         | If `True`, encoder weights are constrained to be ≥ 0 via an activation function. |
-| `activation`             | `str`         | `'softplus'`   | Activation used for non-negative weight constraint. Options: `'softplus'`, `'sigmoid'`. Ignored if `non_negative=False`. |
-| `entropy_on_classes`     | `bool`        | `False`        | If `True`, entropy regularization is grouped and averaged by class label (i.e. per-group entropy minimization). |
-| `entropy_scaling`        | `str or None` | `'exp'`        | How entropy regularization is scaled. Options: `'log'`, `'exp'`, or `None` (no scaling). |
-| `learning_rate`          | `float`       | `0.1`          | Initial learning rate used by the Adam optimizer. |
-| `early_stopping_patience`| `int`         | `100`          | Number of epochs without improvement before early stopping is triggered. |
-| `scheduler_patience`     | `int`         | `10`           | Number of stagnant epochs before reducing the learning rate. |
-| `scheduler_factor`       | `float`       | `0.5`          | Factor by which the learning rate is reduced after plateau. |
-| `verbose`                | `int or bool` | `False`        | If an integer > 0, logs training metrics every N epochs. Set to `False` or `0` for silent mode. |
-| `random_state`           | `int`         | `42`           | Random seed for reproducibility of weight initialization. |
-| `device`                 | `str`         | `'cpu'`        | Device used for training. Options: `'cpu'` or `'cuda'`. |
+| n_components           | int         | 2            | Number of latent dimensions in the embedding space. |
+| feature_classes        | array-like  | None         | Vector of length n_features specifying group structure:<br>• >= 0: known group index (used for both zero & entropy regularization)<br>• -1: entropy regularization only<br>• np.nan: no regularization applied |
+| theta                  | float       | 0.5          | Controls the trade-off between reconstruction loss (RMSE) and regularization loss. 0.0 = pure autoencoder, 1.0 = pure structure. |
+| epsilon                | float       | 0.5          | Balances between zero (1 - ε) and entropy (ε) regularization. |
+| l1_ratio               | float       | 0.5          | Determines the mix of L1 and L2 norm penalties in zero regularization. 1.0 = L1 only, 0.0 = L2 only. |
+| non_negative           | bool        | True         | If True, encoder weights are constrained to be ≥ 0 via an activation function. |
+| activation             | str         | 'softplus'   | Activation used for non-negative weight constraint. Options: 'softplus', 'sigmoid'. Ignored if non_negative=False. |
+| entropy_on_classes     | bool        | False        | If True, entropy regularization is grouped and averaged by class label (i.e. per-group entropy minimization). |
+| entropy_scaling        | str or None | 'exp'        | How entropy regularization is scaled. Options: 'log', 'exp', or None (no scaling). |
+| learning_rate          | float       | 0.1          | Initial learning rate used by the Adam optimizer. |
+| early_stopping_patience| int         | 100          | Number of epochs without improvement before early stopping is triggered. |
+| scheduler_patience     | int         | 10           | Number of stagnant epochs before reducing the learning rate. |
+| scheduler_factor       | float       | 0.5          | Factor by which the learning rate is reduced after plateau. |
+| verbose                | int or bool | False        | If an integer > 0, logs training metrics every N epochs. Set to False or 0 for silent mode. |
+| random_state           | int         | 42           | Random seed for reproducibility of weight initialization. |
+| device                 | str         | 'cpu'        | Device used for training. Options: 'cpu' or 'cuda'. |
 
 
 ---
@@ -191,6 +188,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
