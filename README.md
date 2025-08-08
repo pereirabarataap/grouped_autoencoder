@@ -1,4 +1,4 @@
-# 🧠 Grouped Autoencoder
+# Grouped Autoencoder
 
 A **PyTorch-based linear autoencoder** framework designed for **interpretable dimensionality reduction** under structured constraints. This model supports **group-aware regularization**, **non-negativity**, **entropy-based sparsity control**, and is **scikit-learn-compatible**.
 
@@ -175,6 +175,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
