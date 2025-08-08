@@ -23,7 +23,7 @@ The Grouped Autoencoder is applicable in tasks requiring **interpretable, struct
 - **Neuroscience** – Decompose brain signals (EEG, fMRI) using anatomical or functional priors.
 - **Healthcare Informatics** – Project patient features (symptoms, labs) into disease-oriented embeddings.
 - **Recommender Systems** – Encourage items to associate with specific interest categories.
-- **Survey Analysis & Psychometrics – Reduce and interpret high-dimensional survey data (e.g., personality tests, social attitudes) by aligning related items to the same latent factor.
+- **Survey Analysis & Psychometrics** – Reduce and interpret high-dimensional survey data (e.g., personality tests, social attitudes) by aligning related items to the same latent factor.
 - **Sociology / Education** – Interpret latent traits in structured assessments aligned with hypothesized constructs.
 - **Marketing** – Uncover customer segments from detailed product feedback.
 - **Political Science** – Identify ideological dimensions from polling or voting questionnaires.
@@ -165,6 +165,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
