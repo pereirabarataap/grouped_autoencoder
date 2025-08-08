@@ -157,7 +157,10 @@ Perfect for interpretability and plotting (e.g., heatmaps).
 ```
 grouped_autoencoder/
 ├── grouped_autoencoder.py      # Main model class (Encoder, Decoder, GroupedAutoencoder)
+└── requirements.txt            # Package requirements.
+└── LICENSE                     # License terms
 └── README.md                   # You're here.
+
 ```
 
 ---
@@ -165,6 +168,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
