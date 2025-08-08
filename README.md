@@ -17,27 +17,17 @@ Conventional autoencoders are optimized for reconstruction fidelity without rega
 
 ## 🎯 Applications
 
-The Grouped Autoencoder is designed for tasks requiring **interpretable representations** that reflect known or hypothesized structure in the data. Applications span across scientific and non-scientific domains.
+The Grouped Autoencoder is applicable in tasks requiring **interpretable, structured latent representations**—whether the structure comes from domain knowledge or is discovered automatically.
 
-### 🔬 STEM Applications
-
-- **Genomics & Bioinformatics**: Map genes to known pathways or functional clusters by assigning feature_classes based on known gene ontology.
-- **Neuroscience**: Decompose brain signals (EEG, fMRI) with anatomical or functional priors, enabling structured latent representations.
-- **Healthcare Informatics**: Project patient feature data (e.g., symptoms, labs) into disease-oriented embeddings.
-- **Recommender Systems**: Encourage items (features) to associate with a subset of user-interest categories.
-
-### 💬 Non-STEM / Social Science Applications
-
-- **Survey Analysis & Psychometrics**: When dealing with high-dimensional survey responses (e.g., personality tests, social attitudes), setting `feature_classes = -1` allows the model to discover sparse and interpretable latent dimensions (e.g., behavioral archetypes) via entropy-based regularization.
-- **Sociology / Education**: Interpret latent traits in structured assessments by aligning questionnaire items with hypothesized constructs.
-- **Marketing**: Discover underlying customer segments by analyzing question-level feedback data (e.g., product surveys).
-- **Political Science**: Identify ideological dimensions from question-level voting or polling data, even without clear prior groupings.
-
-### 🧠 Exploratory Research
-
-If no clear structure is known, using `feature_classes = -1` allows the model to **learn sparse representations** in an unsupervised way—ideal for exploratory latent factor analysis or pretraining for downstream models.
-
----
+- **Genomics & Bioinformatics** – Map genes to known pathways or functional clusters by assigning `feature_classes` based on gene ontology.
+- **Neuroscience** – Decompose brain signals (EEG, fMRI) using anatomical or functional priors.
+- **Healthcare Informatics** – Project patient features (symptoms, labs) into disease-oriented embeddings.
+- **Recommender Systems** – Encourage items to associate with specific interest categories.
+- **Survey Analysis & Psychometrics** – For high-dimensional surveys (e.g., personality tests), `feature_classes = -1` discovers sparse, interpretable latent dimensions (behavioral archetypes) via entropy regularization.
+- **Sociology / Education** – Interpret latent traits in structured assessments aligned with hypothesized constructs.
+- **Marketing** – Uncover customer segments from detailed product feedback.
+- **Political Science** – Identify ideological dimensions from polling or voting questionnaires.
+- **Exploratory Research** – With `feature_classes = -1`, the model learns sparse, unsupervised factors—ideal for exploratory latent factor analysis or pretraining.
 
 ## ✨ Features
 
@@ -175,6 +165,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
