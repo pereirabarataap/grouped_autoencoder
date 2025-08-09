@@ -322,15 +322,14 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             reg_struct = torch.tensor(0.0, device=W.device)
             if self.encoder.mask_zero_entries.any():
                 mask = self.encoder.mask_zero_entries
-                W_abs = W.abs()
-                row_norm_l1 = W_abs / W_abs.sum(dim=1, keepdim=True).clamp_min(1e-12)
-                row_norm_l2 = (W ** 2) / (W ** 2).sum(dim=1, keepdim=True).clamp_min(1e-12)
-                col_means_l1 = (row_norm_l1 * mask).sum(dim=0) / mask.sum(dim=0).clamp_min(1)
-                col_means_l2 = (row_norm_l2 * mask).sum(dim=0) / mask.sum(dim=0).clamp_min(1)
+                l1_values = W.abs()
+                l2_values = (W ** 2)
+                col_sums_l1 = (l1_values * mask).sum(dim=0)
+                col_sums_l2 = (l2_values * mask).sum(dim=0)
                 active_cols = mask.sum(dim=0) > 0
                 if active_cols.any():
-                    reg_struct_l1 = col_means_l1[active_cols].mean()
-                    reg_struct_l2 = torch.sqrt(col_means_l2[active_cols].mean())
+                    reg_struct_l1 = col_sums_l1[active_cols].mean()
+                    reg_struct_l2 = torch.sqrt(col_sums_l2[active_cols].mean())
                     reg_struct = self.l1_ratio * reg_struct_l1 + (1 - self.l1_ratio) * reg_struct_l2
 
             # --- Entropy Regularization ---
