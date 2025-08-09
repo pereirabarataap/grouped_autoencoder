@@ -213,7 +213,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         feature_classes=None,
         scheduler_factor=0.5,
         activation="softplus",
-        entropy_scaling="exp",
+        entropy_scaling="log",
         scheduler_patience=10,
         entropy_on_classes=False,
         early_stopping_patience=100,
