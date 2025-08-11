@@ -8,7 +8,6 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class Encoder(nn.Module):
-    
     """
     Linear encoder module with optional non-negativity constraints and structured regularization support.
 
@@ -29,7 +28,7 @@ class Encoder(nn.Module):
     non_negative : bool, default=True
         If True, constrains weights to be non-negative using an activation function (e.g. softplus or sigmoid).
     
-    activation : str, default="sigmoid"
+    activation : str, default="softplus"
         Activation function used to enforce non-negativity:
             - "sigmoid": bounds weights between 0 and 1.
             - "softplus": unbounded positive weights.
@@ -40,25 +39,33 @@ class Encoder(nn.Module):
             - "rand": Uniform random initialization [0, 1).
             - "randn": Standard normal initialization.
     """
-    
-    def __init__(self, in_features, out_features, feature_classes=None, non_negative=True, activation="sigmoid", w_init="randn"):
+    def __init__(self, in_features, out_features, feature_classes=None, non_negative=True, activation="softplus", w_init="randn"):
         super().__init__()
-
-        # Initialize weight matrix
+ 
         # --- Encoder: activation & w_init guard ---
         if non_negative:
-            if w_init == "rand":
-                self.W_raw = nn.Parameter(torch.rand(in_features, out_features, dtype=torch.float32))
-            elif w_init == "randn":
-                self.W_raw = nn.Parameter(torch.randn(in_features, out_features, dtype=torch.float32))
-            else:
-                self.W_raw = nn.Parameter(torch.Tensor(w_init))
+            # Pick activation function and optimal W_raw center (m) for max derivative
             if activation == "sigmoid":
                 self.activation = torch.sigmoid
+                m = 0.0  # sigmoid'(x) peaks at x = 0
             elif activation == "softplus":
                 self.activation = F.softplus
+                m = np.log(np.e - 1)  # ~0.5413, center for softplus'(x) ≈ max
             else:
                 raise ValueError('activation must be "sigmoid" or "softplus"')
+        
+            # Initialize weight matrix in high-derivative region
+            if (w_init is None) or (w_init == "rand"):
+                # Small random spread around m for symmetry breaking
+                self.W_raw = nn.Parameter(
+                    torch.empty(in_features, out_features, dtype=torch.float32).uniform_(m - 0.1, m + 0.1)
+                )
+            elif w_init == "randn":
+                self.W_raw = nn.Parameter(
+                    torch.randn(in_features, out_features, dtype=torch.float32) * 0.05 + m
+                )
+            else:
+                self.W_raw = nn.Parameter(torch.tensor(w_init, dtype=torch.float32))
         else:
             self.W_raw = nn.Parameter(torch.randn(in_features, out_features, dtype=torch.float32))
             self.activation = nn.Identity()
@@ -149,8 +156,9 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
     device : str, default='cpu'
         Torch device to use, e.g. 'cpu' or 'cuda'.
     
-    w_init : str, default="randn"
+    w_init : str, default=None
         Weight initialization method for the encoder:
+            - None: defaults to "rand" if non_negative==True else "randn"
             - "rand": uniform [0, 1).
             - "randn": standard normal.
             - array-like: custom initialization.
@@ -171,8 +179,9 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
     max_iter : int, default=1e5
         Maximum number of training epochs.
     
-    theta_warmup : int, default=1000
+    theta_warmup : int, default=None
         Number of epochs to gradually increase `theta` from 0 to its target value.
+        If set to None, will be infered from X upon fitting: sqrt(X.shape[0] * X.shape[1])
     
     non_negative : bool, default=False
         If True, constrains encoder weights to be >= 0 using an activation function.
@@ -188,7 +197,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         Factor by which the learning rate is reduced when no improvement is seen.
     
     activation : str, default="softplus"
-        Non-negative activation function to use in the encoder:
+        Non-negative activation function to use in the encoder when non_negative==True:
             - "softplus": unbounded non-negative.
             - "sigmoid": [0, 1] bounded.
     
@@ -199,17 +208,29 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             - float: custom scaling factor
             - None: no scaling applied
     
-    scheduler_patience : int, default=10
-        Number of epochs with no improvement before reducing learning rate.
+    scheduler_patience : int, optional
+        Number of consecutive epochs with no improvement in validation loss
+        before reducing the learning rate.
+        If ``None``, this is set automatically based on the warm-up length:
+        ``max(10, theta_warmup // 100)``.
+        A shorter patience than warm-up ensures the learning rate can adjust
+        during the ramp-up phase of regularization.
     
     entropy_on_classes : bool, default=False
         If True, entropy regularization is grouped by class label and averaged per class.
     
-    early_stopping_patience : int, default=100
-        Number of epochs with no improvement before stopping training early.
+    early_stopping_patience : int, optional
+        Number of consecutive epochs with no improvement in validation loss
+        before stopping training early.
+        If ``None``, this is set automatically based on the warm-up length:
+        ``max(100, theta_warmup // 10)``.
+        This is typically longer than ``scheduler_patience`` to give the model
+        enough time to adapt, but still prevent wasted computation if the loss
+        plateaus.
     
     baseline_rmse : float or None, default=None
-        Precomputed baseline RMSE for normalization. If None and `compute_baseline=True`, it is computed automatically.
+        Precomputed baseline RMSE for normalization. If None and `compute_baseline=True`, 
+        it is computed automatically.
     
     baseline_zero_reg : float or None, default=None
         Precomputed baseline zero regularization value for normalization.
@@ -225,24 +246,24 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self,
         theta=0.5,
         epsilon=0.5,
+        w_init=None,
         l1_ratio=0.5,
         device='cpu',
-        w_init="randn",
         verbose=False,
         min_delta=1e-5,
         n_components=2,
         random_state=42,
         max_iter=int(1e5),
-        theta_warmup=1000,
+        theta_warmup=None,
         non_negative=False,
         learning_rate=1e-1,
         feature_classes=None,
         scheduler_factor=0.5,
         activation="softplus",
         entropy_scaling="log",
-        scheduler_patience=10,
+        scheduler_patience=None,
         entropy_on_classes=False,
-        early_stopping_patience=100,
+        early_stopping_patience=None,
         baseline_rmse=None,
         baseline_zero_reg=None,
         baseline_entropy_reg=None,
@@ -257,7 +278,6 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self.activation = activation
         self.max_iter = int(max_iter)
         self.min_delta = float(min_delta)
-        self.theta_warmup=int(theta_warmup)
         self.n_components = int(n_components)
         self.random_state = int(random_state)
         self.non_negative = bool(non_negative)
@@ -267,11 +287,12 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self.learning_rate = float(learning_rate)
         self.l1_ratio = np.clip(l1_ratio, 0.0, 1.0)
         self.theta = np.clip(theta, 0.0, 1.0 - min_delta)
-        self.scheduler_patience = int(scheduler_patience)
         self.entropy_on_classes = bool(entropy_on_classes)
         self.scheduler_factor = np.clip(scheduler_factor, 0.0, 1.0)
-        self.early_stopping_patience = int(early_stopping_patience)
-
+        self.theta_warmup=int(theta_warmup) if theta_warmup is not None else None
+        self.scheduler_patience = int(scheduler_patience) if scheduler_patience is not None else None
+        self.early_stopping_patience = int(early_stopping_patience) if early_stopping_patience is not None else None
+        
         # --- NEW: baselines + flag ---
         self.baseline_rmse = None if baseline_rmse is None else float(baseline_rmse)
         self.baseline_zero_reg = None if baseline_zero_reg is None else float(baseline_zero_reg)
@@ -380,25 +401,64 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         n_features = X_tensor.shape[1]
     
         # Interpret special feature_classes shorthand
-        if isinstance(self.feature_classes, (int, float)) and self.feature_classes == -1:
-            self.feature_classes_ = np.full((n_features,), -1, dtype=np.float32)
-        # feature_classes parsing
-        if isinstance(self.feature_classes, (int, float)) and np.isnan(self.feature_classes):
-            self.feature_classes_ = None
-        elif isinstance(self.feature_classes, str) and self.feature_classes.strip().lower() in {"nan", "none", "null"}:
-            self.feature_classes_ = None
-        elif isinstance(self.feature_classes, (list, tuple, np.ndarray)):
-            self.feature_classes_ = np.array(self.feature_classes, dtype=np.float32)
+        fc = self.feature_classes
+        if isinstance(fc, (int, float)):
+            if fc == -1:
+                self.feature_classes_ = np.full((n_features,), -1, dtype=np.float32)
+            elif fc == -2 or (isinstance(fc, float) and np.isnan(fc)):
+                # treat -2 or NaN scalar as "no regularization for all features"
+                self.feature_classes_ = None
+            else:
+                raise ValueError(
+                    f"Unsupported scalar feature_classes={fc}. "
+                    "Use -1 for entropy-only on all features, or -2/NaN for none."
+                )
+        elif isinstance(fc, str):
+            s = fc.strip().lower()
+            if s in {"-1"}:
+                self.feature_classes_ = np.full((n_features,), -1, dtype=np.float32)
+            elif s in {"-2", "nan", "none", "null"}:
+                self.feature_classes_ = None
+            else:
+                raise ValueError(f"Unsupported feature_classes string: {fc}")
+        elif isinstance(fc, (list, tuple, np.ndarray)):
+            arr = np.asarray(fc, dtype=np.float32)
+            if arr.shape[0] != n_features:
+                raise ValueError(
+                    f"feature_classes has length {arr.shape[0]} but expected {n_features}"
+                )
+            self.feature_classes_ = arr
         else:
+            # Default: no regularization metadata provided
             self.feature_classes_ = None
 
+        # theta warmup heuristic
+        
+        if self.theta_warmup is None:
+            n, d = X.shape
+            self.theta_warmup = int(np.sqrt(n * d))
+        else:
+            self.theta_warmup = int(self.theta_warmup)
+        
+        # scheduler patience heuristic: 1/100 of warmup, min 10
+        if self.scheduler_patience is None:
+            self.scheduler_patience = max(10, int(self.theta_warmup / 100))
+        else:
+            self.scheduler_patience = int(self.scheduler_patience)
+        
+        # early stopping patience heuristic: 1/10 of warmup, min 100
+        if self.early_stopping_patience is None:
+            self.early_stopping_patience = max(100, int(self.theta_warmup / 10))
+        else:
+            self.early_stopping_patience = int(self.early_stopping_patience)
+        
         # Build model using parsed feature_classes
         self._build_model(X_tensor.shape[1])
 
         # Scaling factor for entropy
         if self.entropy_scaling is None:
             self.entropy_scaling_multiplier = 1.0
-        if self.entropy_scaling == "log":
+        elif self.entropy_scaling == "log":
             self.entropy_scaling_multiplier = 1.0 if self.n_components <= 1 else 1.0 / np.log(self.n_components)
         elif self.entropy_scaling == "exp":
             self.entropy_scaling_multiplier = 1.0 / np.exp(self.n_components)
