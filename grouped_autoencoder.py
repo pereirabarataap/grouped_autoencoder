@@ -212,7 +212,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         Number of consecutive epochs with no improvement in validation loss
         before reducing the learning rate.
         If ``None``, this is set automatically based on the warm-up length:
-        ``max(200, theta_warmup // 50)``.
+        ``max(20, theta_warmup // 100)``.
         A shorter patience than warm-up ensures the learning rate can adjust
         during the ramp-up phase of regularization.
     
@@ -223,7 +223,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         Number of consecutive epochs with no improvement in validation loss
         before stopping training early.
         If ``None``, this is set automatically based on the warm-up length:
-        ``max(1000, theta_warmup // 10)``.
+        ``max(200, theta_warmup // 10)``.
         This is typically longer than ``scheduler_patience`` to give the model
         enough time to adapt, but still prevent wasted computation if the loss
         plateaus.
@@ -271,7 +271,6 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         
     ):
         # Assign config
-        
         self.device = device
         self.w_init = w_init
         self.verbose = int(verbose)
@@ -298,26 +297,29 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self.baseline_zero_reg = None if baseline_zero_reg is None else float(baseline_zero_reg)
         self.baseline_entropy_reg = None if baseline_entropy_reg is None else float(baseline_entropy_reg)
         self.compute_baseline = bool(compute_baseline)
-
+        
         self.rmse_list = [] # for plotting/logging
         self.zero_reg_list = [] # for plotting/logging
         self.entr_reg_list = [] # for plotting/logging
         
     def _compute_zero_reg(self, W: torch.Tensor) -> torch.Tensor:
         # --- Zero Regularization ---
-        zero_reg = torch.tensor(0.0, device=W.device)
-        if self.encoder.mask_zero_entries.any():
-            mask = self.encoder.mask_zero_entries
-            l1_values = W.abs()
-            l2_values = (W ** 2)
-            col_sums_l1 = (l1_values * mask).sum(dim=0)
-            col_sums_l2 = (l2_values * mask).sum(dim=0)
-            active_cols = mask.sum(dim=0) > 0
-            if active_cols.any():
-                zero_reg_l1 = col_sums_l1[active_cols].mean()
-                zero_reg_l2 = torch.sqrt(col_sums_l2[active_cols].mean())
-                zero_reg = self.l1_ratio * zero_reg_l1 + (1 - self.l1_ratio) * zero_reg_l2
-        return zero_reg
+        mask = self.encoder.mask_zero_entries
+        if not mask.any():
+            return W.new_tensor(0.0)
+        # per-column counts (>=0), avoid divide-by-zero by masking later
+        counts = mask.sum(dim=0)  # shape: (k,)
+        active = counts > 0
+    
+        l1_col_mean = ((W.abs() * mask).sum(dim=0) / counts.clamp_min(1))[active]
+        l2_col_mean = (((W ** 2) * mask).sum(dim=0) / counts.clamp_min(1))[active]
+    
+        if l1_col_mean.numel() == 0:
+            return W.new_tensor(0.0)
+    
+        zero_reg_l1 = l1_col_mean.mean()
+        zero_reg_l2 = torch.sqrt(l2_col_mean.mean())
+        return self.l1_ratio * zero_reg_l1 + (1 - self.l1_ratio) * zero_reg_l2
         
     def _compute_entropy_reg(self, W: torch.Tensor) -> torch.Tensor:
         # --- Entropy Regularization ---
@@ -440,13 +442,13 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         else:
             self.theta_warmup = int(self.theta_warmup)
         
-        # scheduler patience heuristic: 1/100 of warmup, min 10
+        # scheduler patience heuristic: 1/50 of warmup, min 200
         if self.scheduler_patience is None:
             self.scheduler_patience = max(200, int(self.theta_warmup / 50))
         else:
             self.scheduler_patience = int(self.scheduler_patience)
         
-        # early stopping patience heuristic: 1/10 of warmup, min 100
+        # early stopping patience heuristic: 1/10 of warmup, min 1000
         if self.early_stopping_patience is None:
             self.early_stopping_patience = max(1000, int(self.theta_warmup / 10))
         else:
