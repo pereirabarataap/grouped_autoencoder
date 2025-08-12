@@ -127,15 +127,16 @@ class Decoder(nn.Module):
 class GroupedAutoencoder(BaseEstimator, TransformerMixin):
     """
     A custom autoencoder with structured regularization for group-aware learning.
-    
+        
     Supports:
         - Sparse latent factors via L1/L2 (zero) regularization.
         - Entropy-based regularization for controlling feature spread across components.
         - Optional class-aware entropy grouping.
         - Non-negativity constraints for interpretability (e.g., parts-based learning).
         - Baseline normalization of loss terms for balanced optimization.
-        - Gradual warm-up of the regularization–reconstruction trade-off.
-    
+        - Gradual warm-up of the regularization–reconstruction trade-off, with independent schedules
+          for zero and entropy regularization.
+        
     Parameters
     ----------
     theta : float, default=0.5
@@ -146,6 +147,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
     epsilon : float, default=0.5
         Balance between zero (sparsity) and entropy regularization terms.
         0.0 = only zero reg, 1.0 = only entropy reg, 0.5 = equal mix.
+        If only one regularization type is active, it receives the full `theta` budget.
     
     l1_ratio : float, default=0.5
         Balance between L1 and L2 norms in zero regularization:
@@ -181,7 +183,16 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
     
     theta_warmup : int, default=None
         Number of epochs to gradually increase `theta` from 0 to its target value.
-        If set to None, will be infered from X upon fitting: sqrt(X.shape[0] * X.shape[1])
+        If set to None, will be inferred from X upon fitting: sqrt(X.shape[0] * X.shape[1])
+    
+    zero_warmup : {"linear", "bezier_convex", "bezier_concave"}, default="linear"
+        Warm-up schedule for zero regularization:
+            - "linear": increases proportionally to training progress.
+            - "bezier_convex": slow start, accelerates towards the end.
+            - "bezier_concave": fast start, slows down towards the end.
+    
+    entropy_warmup : {"linear", "bezier_convex", "bezier_concave"}, default="bezier_convex"
+        Warm-up schedule for entropy regularization (same options as `zero_warmup`).
     
     non_negative : bool, default=False
         If True, constrains encoder weights to be >= 0 using an activation function.
@@ -212,7 +223,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         Number of consecutive epochs with no improvement in validation loss
         before reducing the learning rate.
         If ``None``, this is set automatically based on the warm-up length:
-        ``max(20, theta_warmup // 100)``.
+        ``max(200, theta_warmup // 50)``.
         A shorter patience than warm-up ensures the learning rate can adjust
         during the ramp-up phase of regularization.
     
@@ -223,7 +234,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         Number of consecutive epochs with no improvement in validation loss
         before stopping training early.
         If ``None``, this is set automatically based on the warm-up length:
-        ``max(200, theta_warmup // 10)``.
+        ``max(1000, theta_warmup // 10)``.
         This is typically longer than ``scheduler_patience`` to give the model
         enough time to adapt, but still prevent wasted computation if the loss
         plateaus.
@@ -241,7 +252,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
     compute_baseline : bool, default=False
         If True, fits an unregularized baseline model to compute normalization constants.
     """
-
+    
     def __init__(
         self,
         theta=0.5,
@@ -263,6 +274,8 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         entropy_scaling="log",
         scheduler_patience=None,
         entropy_on_classes=False,
+        zero_warmup=None,
+        entropy_warmup=None,
         early_stopping_patience=None,
         baseline_rmse=None,
         baseline_zero_reg=None,
@@ -297,7 +310,10 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self.baseline_zero_reg = None if baseline_zero_reg is None else float(baseline_zero_reg)
         self.baseline_entropy_reg = None if baseline_entropy_reg is None else float(baseline_entropy_reg)
         self.compute_baseline = bool(compute_baseline)
-        
+        # Warmup schedules: "linear", "bezier_convex", "bezier_concave"
+        self.zero_warmup = zero_warmup if zero_warmup is not None else "linear"
+        self.entropy_warmup = entropy_warmup if entropy_warmup is not None else "bezier_convex"
+
         self.rmse_list = [] # for plotting/logging
         self.zero_reg_list = [] # for plotting/logging
         self.entr_reg_list = [] # for plotting/logging
@@ -361,7 +377,90 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         # Store a flag for combining with epsilon later
         self.entropy_flag = 1 if entropy_flag else 0
         return entropy_reg
-        
+
+    def _sched(self, kind: str, u: torch.Tensor) -> torch.Tensor:
+        # u in [0,1]
+        if kind == "linear":
+            return u
+        elif kind == "bezier_convex":
+            # (0,0)-(1,0)-(1,1): slow start, fast finish; convex
+            return (1.0 - torch.sqrt(1.0 - u))**2
+        elif kind == "bezier_concave":
+            # mirror of bezier_convex over y=x: fast start, slow finish; concave
+            # exact inverse of the convex curve: s(u) = 2*sqrt(u) - u
+            return 2.0 * torch.sqrt(u) - u
+        else:
+            raise ValueError(f"Unknown warmup kind: {kind!r}")
+    
+    def _compute_reg_weights(self, epoch: int):
+        """
+        Returns (lambda_zero, lambda_ent, lambda_tot) for this epoch,
+        using self.zero_warmup and self.entropy_warmup.
+        Uses a fixed epsilon split regardless of which regularizers are active.
+        """
+        u = torch.tensor((epoch + 1) / self.theta_warmup, device=self.device).clamp(0.0, 1.0)
+        s_zero = self._sched(self.zero_warmup, u)
+        s_ent  = self._sched(self.entropy_warmup, u)
+    
+        lambda_zero = self.theta * (1.0 - self.epsilon) * s_zero
+        lambda_ent  = self.theta * self.epsilon * s_ent
+        lambda_tot  = lambda_zero + lambda_ent
+        return lambda_zero, lambda_ent, lambda_tot
+
+    def _compute_baselines_if_needed(self, X_tensor, X_val_tensor, eps0: float):
+        """
+        Encapsulates the baseline computation block (no behavior changes).
+        Sets: self.baseline_rmse, self.baseline_zero_reg, self.baseline_entropy_reg.
+        """
+        if (self.baseline_rmse is not None) and (self.baseline_zero_reg is not None) and (self.baseline_entropy_reg is not None):
+            return
+    
+        if not self.compute_baseline:
+            # default neutral dividers
+            self.baseline_rmse = 1.0
+            self.baseline_zero_reg = 1.0
+            self.baseline_entropy_reg = 1.0
+            return
+    
+        base = GroupedAutoencoder(
+            theta=0.0,
+            epsilon=0.0,
+            l1_ratio=self.l1_ratio,
+            device=self.device,
+            w_init=self.w_init,
+            verbose=0,
+            min_delta=self.min_delta,
+            n_components=self.n_components,
+            random_state=self.random_state,
+            max_iter=self.max_iter,
+            non_negative=self.non_negative,
+            learning_rate=self.learning_rate,
+            feature_classes=self.feature_classes,  # keep masks for evaluating regs
+            scheduler_factor=self.scheduler_factor,
+            activation=self.activation,
+            entropy_scaling=self.entropy_scaling,
+            scheduler_patience=self.scheduler_patience,
+            entropy_on_classes=self.entropy_on_classes,
+            early_stopping_patience=self.early_stopping_patience,
+            # do NOT recurse baseline computation
+            baseline_rmse=1.0,
+            baseline_zero_reg=1.0,
+            baseline_entropy_reg=1.0,
+            compute_baseline=False,
+        )
+        base.fit(X_tensor.detach().cpu().numpy(), X_val=None if X_val_tensor is None else X_val_tensor.detach().cpu().numpy())
+        with torch.no_grad():
+            Xb = X_val_tensor if X_val_tensor is not None else X_tensor
+            Xb_hat = base.model(Xb)
+            baseline_rmse = torch.sqrt(self.loss_fn(Xb_hat, Xb)).item()
+            baseline_W = base.encoder.activation(base.encoder.W_raw)
+            baseline_zero_reg = base._compute_zero_reg(baseline_W).item()
+            baseline_entropy_reg = base._compute_entropy_reg(baseline_W).item()
+    
+        self.baseline_rmse = max(baseline_rmse, eps0)
+        self.baseline_zero_reg = max(baseline_zero_reg, eps0)
+        self.baseline_entropy_reg = max(baseline_entropy_reg, eps0)
+    
     def _build_model(self, input_dim):
         """
         Internal: Initializes encoder, decoder, and optimizer.
@@ -379,7 +478,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         self.model = nn.Sequential(self.encoder, self.decoder).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.MSELoss()
-
+    
     def fit(self, X, X_val=None):
         """
         Trains the autoencoder on input data with optional validation.
@@ -434,8 +533,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             # Default: no regularization metadata provided
             self.feature_classes_ = None
 
-        # theta warmup heuristic
-        
+        # theta warmup heuristic 
         if self.theta_warmup is None:
             n, d = X.shape
             self.theta_warmup = int(np.sqrt(n * d))
@@ -456,6 +554,11 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         
         # Build model using parsed feature_classes
         self._build_model(X_tensor.shape[1])
+        # --- initialize entropy_flag before training ---
+        fc_full = self.encoder.feature_classes_full
+        unknown_mask = (fc_full == -1)         # always included in entropy
+        valid_mask   = (fc_full >= 0)          # used if entropy_on_classes=True
+        self.entropy_flag = bool(unknown_mask.any() or (self.entropy_on_classes and valid_mask.any()))
 
         # Scaling factor for entropy
         if self.entropy_scaling is None:
@@ -469,58 +572,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
 
         # --- NEW: compute or set baselines (per config) ---
         eps0 = 1e-12
-        if (self.baseline_rmse is None) or (self.baseline_zero_reg is None) or (self.baseline_entropy_reg is None):
-            if self.compute_baseline:
-                # Build a baseline clone: same feature_classes & arch, but theta=0 (no regularization)
-                base = GroupedAutoencoder(
-                    theta=0.0,
-                    epsilon=0.0,
-                    l1_ratio=self.l1_ratio,
-                    device=self.device,
-                    w_init=self.w_init,
-                    verbose=0,
-                    min_delta=self.min_delta,
-                    n_components=self.n_components,
-                    random_state=self.random_state,
-                    max_iter=self.max_iter,
-                    non_negative=self.non_negative,
-                    learning_rate=self.learning_rate,
-                    feature_classes=self.feature_classes,  # keep masks for evaluating regs
-                    scheduler_factor=self.scheduler_factor,
-                    activation=self.activation,
-                    entropy_scaling=self.entropy_scaling,
-                    scheduler_patience=self.scheduler_patience,
-                    entropy_on_classes=self.entropy_on_classes,
-                    early_stopping_patience=self.early_stopping_patience,
-                    # do NOT recurse baseline computation
-                    baseline_rmse=1.0,
-                    baseline_zero_reg=1.0,
-                    baseline_entropy_reg=1.0,
-                    compute_baseline=False,
-                )
-                base.fit(X, X_val=X_val)
-                # evaluate on val if available, else train
-                with torch.no_grad():
-                    if X_val_tensor is not None:
-                        Xb = X_val_tensor
-                        Xb_hat = base.model(Xb)
-                    else:
-                        Xb = X_tensor
-                        Xb_hat = base.model(Xb)
-                    baseline_rmse = torch.sqrt(self.loss_fn(Xb_hat, Xb)).item()
-                    baseline_W = base.encoder.activation(base.encoder.W_raw)
-                    # Attach masks to THIS instance to reuse helpers consistently
-                    baseline_zero_reg = base._compute_zero_reg(baseline_W).item()
-                    baseline_entropy_reg  = base._compute_entropy_reg(baseline_W).item()
-
-                self.baseline_rmse = max(baseline_rmse, eps0)
-                self.baseline_zero_reg = max(baseline_zero_reg, eps0)
-                self.baseline_entropy_reg = max(baseline_entropy_reg, eps0)
-            else:
-                # default neutral dividers
-                self.baseline_rmse = 1.0
-                self.baseline_zero_reg = 1.0
-                self.baseline_entropy_reg = 1.0
+        self._compute_baselines_if_needed(X_tensor, X_val_tensor, eps0)
 
         best_val = float('inf')
         epochs_no_improve = 0
@@ -529,28 +581,25 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         for epoch in range(self.max_iter):
             self.model.train()
             self.optimizer.zero_grad()
-
-            # Forward pass
+        
+            # Forward
             X_hat = self.model(X_tensor)
             rmse = torch.sqrt(self.loss_fn(X_hat, X_tensor))
-            n_rmse = rmse/max(self.baseline_rmse, eps0)
-            loss = n_rmse
-
+            n_rmse = rmse / max(self.baseline_rmse, eps0)
+        
+            # --- Regularization terms (compute & normalize FIRST) ---
             W = self.encoder.activation(self.encoder.W_raw)
-            # --- Regularization ---
             zero_reg = self._compute_zero_reg(W)
             entropy_reg = self._compute_entropy_reg(W)
-            n_zero_reg = zero_reg/max(self.baseline_zero_reg, eps0)
-            n_entropy_reg = entropy_reg/max(self.baseline_entropy_reg, eps0)
-            
-            # Combine regularizations
-            if self.encoder.mask_zero_entries.any() and self.entropy_flag:
-                reg_total = (1 - self.epsilon) * n_zero_reg + self.epsilon * n_entropy_reg
-            else:
-                reg_total = n_zero_reg + n_entropy_reg
-
-            theta_t = min(1.0, (epoch+1)/self.theta_warmup) * self.theta
-            loss = (1 - theta_t) * n_rmse + theta_t * reg_total
+            n_zero_reg = zero_reg / max(self.baseline_zero_reg, eps0)
+            n_entropy_reg = entropy_reg / max(self.baseline_entropy_reg, eps0)
+        
+            # --- Weights (linear zero, chosen warmup for entropy; epsilon only if both exist) ---
+            lambda_zero, lambda_ent, lambda_tot = self._compute_reg_weights(epoch)
+        
+            # Weighted reg and final loss
+            reg_total_weighted = lambda_zero * n_zero_reg + lambda_ent * n_entropy_reg
+            loss = (1.0 - lambda_tot) * n_rmse + reg_total_weighted
 
             self.rmse_list.append(rmse.item())
             self.zero_reg_list.append(zero_reg.item())
