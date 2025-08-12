@@ -212,7 +212,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         Number of consecutive epochs with no improvement in validation loss
         before reducing the learning rate.
         If ``None``, this is set automatically based on the warm-up length:
-        ``max(10, theta_warmup // 100)``.
+        ``max(200, theta_warmup // 50)``.
         A shorter patience than warm-up ensures the learning rate can adjust
         during the ramp-up phase of regularization.
     
@@ -223,7 +223,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         Number of consecutive epochs with no improvement in validation loss
         before stopping training early.
         If ``None``, this is set automatically based on the warm-up length:
-        ``max(100, theta_warmup // 10)``.
+        ``max(1000, theta_warmup // 10)``.
         This is typically longer than ``scheduler_patience`` to give the model
         enough time to adapt, but still prevent wasted computation if the loss
         plateaus.
@@ -442,13 +442,13 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         
         # scheduler patience heuristic: 1/100 of warmup, min 10
         if self.scheduler_patience is None:
-            self.scheduler_patience = max(10, int(self.theta_warmup / 100))
+            self.scheduler_patience = max(200, int(self.theta_warmup / 50))
         else:
             self.scheduler_patience = int(self.scheduler_patience)
         
         # early stopping patience heuristic: 1/10 of warmup, min 100
         if self.early_stopping_patience is None:
-            self.early_stopping_patience = max(100, int(self.theta_warmup / 10))
+            self.early_stopping_patience = max(1000, int(self.theta_warmup / 10))
         else:
             self.early_stopping_patience = int(self.early_stopping_patience)
         
