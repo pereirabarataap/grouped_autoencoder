@@ -124,7 +124,7 @@ class Decoder(nn.Module):
         W = self.encoder.activation(self.encoder.W_raw)
         return Z @ W.T
 
-class GroupedAutoencoder(BaseEstimator, TransformerMixin):
+class CLEAR(BaseEstimator, TransformerMixin):
     """
     A custom autoencoder with structured regularization for group-aware learning.
         
@@ -422,7 +422,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
             self.baseline_entropy_reg = 1.0
             return
     
-        base = GroupedAutoencoder(
+        base = CLEAR(
             theta=0.0,
             epsilon=0.0,
             l1_ratio=self.l1_ratio,
@@ -493,7 +493,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
 
         Returns
         -------
-        self : GroupedAutoencoder
+        self : CLEAR
             The fitted model.
         """
         # Training setup
@@ -719,7 +719,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         Parameters
         ----------
         apply_scaling : bool, default=False
-            If True, columns are normalized to unit L1 norm (sum to 1).
+            If True, each row is normalized to unit L1 norm (sum to 1).
 
         Returns
         -------
@@ -728,7 +728,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
         """
         W_tensor = self.encoder.activation(self.encoder.W_raw)
         if apply_scaling:
-            W_tensor = F.normalize(W_tensor, p=1, dim=0)
+            W_tensor = F.normalize(W_tensor, p=1, dim=1)
         return W_tensor.detach().cpu().numpy()
 
     def to(self, device):
@@ -742,7 +742,7 @@ class GroupedAutoencoder(BaseEstimator, TransformerMixin):
 
         Returns
         -------
-        self : GroupedAutoencoder
+        self : CLEAR
             The model moved to the target device.
         """
         self.device = device
