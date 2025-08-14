@@ -92,7 +92,7 @@ W = model.get_W(apply_scaling=True)
 | non_negative           | bool        | True         | If True, encoder weights are constrained to be ≥ 0 via an activation function. |
 | activation             | str         | 'softplus'   | Activation used for non-negative weight constraint. Options: 'softplus', 'sigmoid'. Ignored if non_negative=False. |
 | entropy_on_classes     | bool        | False        | If True, entropy regularization is grouped and averaged by class label (i.e. per-group entropy minimization). |
-| entropy_scaling        | str or None | 'exp'        | How entropy regularization is scaled. Options: 'log', 'exp', or None (no scaling). |
+| entropy_scaling        | str or None | 'log'        | How entropy regularization is scaled. Options: 'log', 'exp', or None (no scaling). |
 | learning_rate          | float       | 0.1          | Initial learning rate used by the Adam optimizer. |
 | early_stopping_patience| int         | 100          | Number of epochs without improvement before early stopping is triggered. |
 | scheduler_patience     | int         | 10           | Number of stagnant epochs before reducing the learning rate. |
@@ -167,6 +167,7 @@ grouped_autoencoder/
 ## 📄 License
 
 GPL-3.0
+
 
 
 
